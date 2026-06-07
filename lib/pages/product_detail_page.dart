@@ -45,6 +45,7 @@ class ProductDetailPage extends StatelessWidget {
         throw 'Could not launch $whatsappUri';
       }
     } catch (e) {
+      if (!context.mounted) return; // Mengamankan async gap bray biar ga kuning warning linter-nya
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Gagal membuka WhatsApp ke nomor: $noWa'),
@@ -131,9 +132,23 @@ class ProductDetailPage extends StatelessWidget {
                   const SizedBox(height: 24),
                   
                   const Divider(color: AppColors.borderForm),
+                  const SizedBox(height: 24),
+                  
+                  // POSISI BARU: Deskripsi Cupang Naik ke Atas
+                  const Text('Deskripsi Produk', style: AppTextStyles.h1),
+                  const SizedBox(height: 12),
+                  Text(
+                    description.isNotEmpty 
+                        ? description 
+                        : 'Ikan cupang jenis $badge dengan kualitas premium. Tidak ada deskripsi tambahan untuk produk ini.',
+                    style: AppTextStyles.inputText.copyWith(height: 1.5),
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  const Divider(color: AppColors.borderForm),
                   const SizedBox(height: 16),
                   
-                  // Info Penjual
+                  // POSISI BARU: Info Nama Toko/Penjual Turun ke Bawah Deskripsi
                   Row(
                     children: [
                       const CircleAvatar(
@@ -146,26 +161,16 @@ class ProductDetailPage extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(seller, style: AppTextStyles.label.copyWith(fontSize: 16)),
+                            // Nama akun diubah ukurannya jadi lebih besar (fontSize: 20) dan tebal biar mirip Nama Toko utama bray
+                            Text(
+                              seller, 
+                              style: AppTextStyles.h1.copyWith(fontSize: 20, fontWeight: FontWeight.bold),
+                            ),
                             const SizedBox(height: 4),
                           ],
                         ),
                       ),
                     ],
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  const Divider(color: AppColors.borderForm),
-                  const SizedBox(height: 24),
-                  
-                  // Deskripsi Cupang Asli Database
-                  const Text('Deskripsi Produk', style: AppTextStyles.h1),
-                  const SizedBox(height: 12),
-                  Text(
-                    description.isNotEmpty 
-                        ? description 
-                        : 'Ikan cupang jenis $badge dengan kualitas premium. Tidak ada deskripsi tambahan untuk produk ini.',
-                    style: AppTextStyles.inputText.copyWith(height: 1.5),
                   ),
                   const SizedBox(height: 100), 
                 ],
@@ -190,7 +195,7 @@ class ProductDetailPage extends StatelessWidget {
                   icon: const Icon(Icons.chat, color: Colors.white),
                   label: const Text('Hubungi via WhatsApp', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF25D366), 
+                    backgroundColor: const Color.fromARGB(255, 19, 182, 79), 
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
-import 'dart:convert';
 import 'package:cupang_store_kelompok9/constants/colors.dart';
 import 'package:cupang_store_kelompok9/constants/text_styles.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,50 +11,18 @@ class AddArticlePage extends StatefulWidget {
   @override
   State<AddArticlePage> createState() => _AddArticlePageState();
 }
+
 class _AddArticlePageState extends State<AddArticlePage> {
   // Base URL backend BettaVerse kamu
   final String baseUrl = "https://bettaverse.my.id";
+  
   // Controller untuk menangkap input teks form
   final TextEditingController _judulController = TextEditingController();
   final TextEditingController _ringkasanController = TextEditingController();
   final TextEditingController _isiController = TextEditingController();
   File? _selectedImage;
   bool _isLoading = false;
-  // --- VALIDASI AKUN SESUAI USER YANG LOGIN ---
-  Future<int> getLoggedInUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    
-    // 1. Ambil token login yang disimpan temanmu (biasanya namanya 'token' atau 'auth_token')
-    final String token = prefs.getString('token') ?? prefs.getString('auth_token') ?? '';
 
-    if (token.isEmpty) {
-      // Jika belum login atau token tidak ketemu, default ke 1 agar tidak error 500
-      return 1; 
-    }
-
-    try {
-      // 2. Minta data user yang sedang login langsung ke server Laravel kamu
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/user'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-        },
-      );
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> userData = json.decode(response.body);
-        // 3. Ambil ID asli dari server (pasti akurat sesuai akun yang sedang login)
-        final int realId = int.tryParse(userData['id'].toString()) ?? 1;
-        print("=== ID SELLER ASLI DARI SERVER: $realId ===");
-        return realId;
-      }
-    } catch (e) {
-      print("Gagal mengambil data user dari token: $e");
-    }
-
-    // Jalur aman cadangan jika server down, kembalikan 1 agar database tidak crash
-    return 1;
-  }
   // Fungsi untuk memilih gambar dari galeri HP
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
@@ -66,52 +33,67 @@ class _AddArticlePageState extends State<AddArticlePage> {
       });
     }
   }
+
   // Fungsi mengirim data ke API Laravel menggunakan Multipart Request
   Future<void> _uploadArticle() async {
-    // Validasi input form sederhana
-    if (_judulController.text.isEmpty || _isiController.text.isEmpty) {
+    // Validasi input form sederhana bray
+    if (_judulController.text.isEmpty || 
+        _ringkasanController.text.isEmpty || 
+        _isiController.text.isEmpty || 
+        _selectedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Judul dan Isi Artikel wajib diisi!')),
+        const SnackBar(content: Text('Semua form dan gambar wajib diisi bray!')),
       );
       return;
     }
+
     setState(() {
       _isLoading = true;
     });
+
     try {
-      final int currentUserId = await getLoggedInUserId();
-      // Gunakan MultipartRequest karena kita akan mengunggah file foto/gambar
+      // 1. Ambil Token dari SharedPreferences bray
+      final prefs = await SharedPreferences.getInstance();
+      final String token = prefs.getString('token') ?? prefs.getString('auth_token') ?? '';
+
+      // 2. Gunakan MultipartRequest karena kita akan mengunggah file foto/gambar
       var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/artikel'));
-      // Menambahkan field teks ke dalam request body
+      
+      // 3. Masukkan Bearer Token ke Header agar lolos proteksi Sanctum & bebas error 419 bray!
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      });
+
+      // 4. Menambahkan field teks ke dalam request body (Sesuai database: judul, ringkasan, isi)
       request.fields['judul'] = _judulController.text;
       request.fields['ringkasan'] = _ringkasanController.text;
       request.fields['isi'] = _isiController.text;
-      request.fields['user_id'] = currentUserId.toString(); // Validasi ID Akun Penjual
-      // Menyisipkan file gambar jika user memilih cover artikel
-      if (_selectedImage != null) {
-        request.files.add(await http.MultipartFile.fromPath(
-          'gambar', // Harus sama dengan key di request controller Laravel ($request->file('gambar'))
-          _selectedImage!.path,
-        ));
-      }
+
+      // 5. Menyisipkan file gambar cover artikel
+      request.files.add(await http.MultipartFile.fromPath(
+        'gambar', // Key ini sudah sesuai dengan $request->file('gambar') di Laravel
+        _selectedImage!.path,
+      ));
+
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
+
+      if (!mounted) return; // Pelindung async gap bray
+
       if (response.statusCode == 200 || response.statusCode == 201) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Artikel berhasil dipublikasikan!')),
-          );
-          Navigator.pop(context, true); // Kirim value true agar halaman sebelumnya ter-refresh
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Artikel berhasil dipublikasikan!')),
+        );
+        Navigator.pop(context, true); // Kirim value true agar halaman list ter-refresh otomatis
       } else {
         throw Exception('Gagal menyimpan ke server. Kode: ${response.statusCode}');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Terjadi kesalahan: $e')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Terjadi kesalahan: $e')),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -120,6 +102,7 @@ class _AddArticlePageState extends State<AddArticlePage> {
       }
     }
   }
+
   @override
   void dispose() {
     _judulController.dispose();
@@ -127,6 +110,7 @@ class _AddArticlePageState extends State<AddArticlePage> {
     _isiController.dispose();
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -178,7 +162,8 @@ class _AddArticlePageState extends State<AddArticlePage> {
               ),
             ),
             const SizedBox(height: 24),
-            // Input Judul Artikel (Menggantikan FormInputField kustom agar aman)
+            
+            // Input Judul Artikel
             const Text('Judul Artikel *', style: AppTextStyles.label),
             const SizedBox(height: 8),
             TextFormField(
@@ -193,6 +178,7 @@ class _AddArticlePageState extends State<AddArticlePage> {
               ),
             ),
             const SizedBox(height: 20),
+            
             // Input Ringkasan Singkat
             const Text('Ringkasan Singkat *', style: AppTextStyles.label),
             const SizedBox(height: 8),
@@ -208,6 +194,7 @@ class _AddArticlePageState extends State<AddArticlePage> {
               ),
             ),
             const SizedBox(height: 20),
+            
             // Input Isi Artikel Lengkap
             const Text('Isi Artikel Lengkap *', style: AppTextStyles.label),
             const SizedBox(height: 8),
@@ -223,6 +210,7 @@ class _AddArticlePageState extends State<AddArticlePage> {
               ),
             ),
             const SizedBox(height: 40),
+            
             // Tombol Publish
             SizedBox(
               width: double.infinity,
@@ -243,4 +231,4 @@ class _AddArticlePageState extends State<AddArticlePage> {
       ),
     );
   }
-} 
+}
