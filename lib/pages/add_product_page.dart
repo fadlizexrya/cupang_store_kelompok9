@@ -17,7 +17,6 @@ class _AddProductPageState extends State<AddProductPage> {
   String _selectedJenis = 'Halfmoon'; // Default dropdown
   final List<String> _jenisCupang = ['Halfmoon', 'Crown Tail', 'Plakat', 'Double Tail', 'Giant'];
 
-  // Semua field sekarang aman menggunakan TextEditingController bawaan asli Flutter
   final TextEditingController _namaController = TextEditingController();
   final TextEditingController _hargaController = TextEditingController();
   final TextEditingController _stokController = TextEditingController(text: '1');
@@ -37,7 +36,6 @@ class _AddProductPageState extends State<AddProductPage> {
     super.dispose();
   }
 
-  // Fungsi ambil foto dari galeri HP
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
     try {
@@ -58,7 +56,6 @@ class _AddProductPageState extends State<AddProductPage> {
     }
   }
 
-  // Fungsi kirim data ke API backend BettaVerse
   Future<void> _submitProduct() async {
     if (_namaController.text.isEmpty ||
         _hargaController.text.isEmpty ||
@@ -81,25 +78,31 @@ class _AddProductPageState extends State<AddProductPage> {
     setState(() => _isSubmitting = true);
 
     try {
+      // 1. Ambil token dari memori lokal HP
       final prefs = await SharedPreferences.getInstance();
-      String currentSellerName = prefs.getString('user_name') ?? "Penjual";
+      String? token = prefs.getString('token'); // 🔑 PASTIKAN KEY INI SAMA DENGAN DI LOGIN PAGE KALIAN
+
+      // Log untuk debug di console VS Code / Android Studio kamu bray
+      print("Token yang dikirim: $token");
 
       var request = http.MultipartRequest(
         'POST',
-        Uri.parse('https://bettaverse.my.id/api/marketplace'),
+        Uri.parse('https://bettaverse.my.id/api/marketplace/'),
       );
 
+      // 2. Wajib sertakan Authorization Bearer agar lolos dari jeratan 401 Sanctum
       request.headers.addAll({
         'Accept': 'application/json',
+        'Content-Type': 'multipart/form-data',
+        'Authorization': 'Bearer $token', // <-- Ini paspor penembus error 401!
       });
 
       request.fields['nama'] = _namaController.text;
-      request.fields['kategori'] = _selectedJenis;
+      request.fields['jenis'] = _selectedJenis; 
       request.fields['harga'] = _hargaController.text;
       request.fields['stok'] = _stokController.text;
       request.fields['no_wa'] = _noWaController.text;
       request.fields['deskripsi'] = _deskripsiController.text;
-      request.fields['nama_toko'] = currentSellerName;
 
       request.files.add(
         await http.MultipartFile.fromPath(
@@ -111,14 +114,21 @@ class _AddProductPageState extends State<AddProductPage> {
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
-      // Proteksi Async Gaps agar BuildContext aman dari error linting
       if (!mounted) return;
+
+      // Cek respon server bray
+      print("Respon Status Code: ${response.statusCode}");
+      print("Respon Body: ${response.body}");
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Postingan berhasil ditambahkan ke Marketplace!')),
         );
-        Navigator.pop(context, true);
+        Navigator.pop(context, true); // Tutup halaman dan refresh list beranda
+      } else if (response.statusCode == 401) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error 401: Sesi login tidak valid. Silakan logout lalu login ulang!')),
+        );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Gagal memposting: Server merespon kode ${response.statusCode}')),
@@ -138,7 +148,6 @@ class _AddProductPageState extends State<AddProductPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Reusable input decoration untuk meniru desain mockup asli kelompokmu
     InputDecoration buildFormDecoration(IconData icon, String hint) {
       return InputDecoration(
         hintText: hint,
@@ -168,7 +177,6 @@ class _AddProductPageState extends State<AddProductPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Upload Foto Section
             const Text('Foto Cupang *', style: AppTextStyles.label),
             const SizedBox(height: 8),
             GestureDetector(
@@ -203,7 +211,6 @@ class _AddProductPageState extends State<AddProductPage> {
             ),
             const SizedBox(height: 24),
 
-            // 2. Input Nama Cupang
             const Text('Nama Cupang *', style: AppTextStyles.label),
             const SizedBox(height: 8),
             TextFormField(
@@ -213,7 +220,6 @@ class _AddProductPageState extends State<AddProductPage> {
             ),
             const SizedBox(height: 20),
 
-            // Dropdown Jenis Cupang
             const Text('Jenis Cupang *', style: AppTextStyles.label),
             const SizedBox(height: 8),
             Container(
@@ -244,7 +250,6 @@ class _AddProductPageState extends State<AddProductPage> {
             ),
             const SizedBox(height: 20),
 
-            // Harga dan Stok Bersebelahan
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -292,7 +297,6 @@ class _AddProductPageState extends State<AddProductPage> {
             ),
             const SizedBox(height: 20),
 
-            // Nomor WhatsApp
             const Text('Nomor WhatsApp *', style: AppTextStyles.label),
             const SizedBox(height: 8),
             TextFormField(
@@ -303,7 +307,6 @@ class _AddProductPageState extends State<AddProductPage> {
             ),
             const SizedBox(height: 20),
 
-            // Deskripsi
             const Text('Deskripsi *', style: AppTextStyles.label),
             const SizedBox(height: 8),
             TextFormField(
@@ -321,7 +324,6 @@ class _AddProductPageState extends State<AddProductPage> {
             ),
             const SizedBox(height: 40),
 
-            // Tombol Simpan 
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
