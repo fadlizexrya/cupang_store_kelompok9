@@ -3,25 +3,39 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // Ganti dengan domain server atau IP (10.0.2.2 jika pake emulator android)
+  // Domain server VPS BettaVerse kamu bray bray
   static const String baseUrl = 'https://bettaverse.my.id/api';
 
   // --- AUTH SERVICES ---
 
-  static Future<Map<String, dynamic>> login(String email, String password) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/login'),
-      body: {'email': email, 'password': password},
-    );
+  // 📢 FIX LOGIN: Tambahkan parameter role agar lolos validasi AuthController backend!
+  static Future<Map<String, dynamic>> login(String email, String password, String role) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/login'),
+        headers: {
+          'Accept': 'application/json', // 👈 WAJIB: Biar Laravel tahu ini API, bukan web browser
+        },
+        body: {
+          'email': email, 
+          'password': password,
+          'role': role, // 👈 WAJIB: Mengirim 'user' atau 'seller' sesuai pilihan di UI
+        },
+      );
 
-    if (response.statusCode == 200) {
-      var data = jsonDecode(response.body);
-      // Simpan token ke HP
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', data['access_token']);
-      return data;
-    } else {
-      throw Exception('Login Gagal');
+      if (response.statusCode == 200) {
+        var data = jsonDecode(response.body);
+        // Simpan token ke HP bray
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', data['access_token']);
+        return data;
+      } else {
+        // Biar kalau role salah atau password salah, pesan error aslinya kelihatan di Flutter bray
+        var errorData = jsonDecode(response.body);
+        throw Exception(errorData['message'] ?? 'Login Gagal');
+      }
+    } catch (e) {
+      throw Exception('Gagal Login: $e');
     }
   }
 
@@ -44,6 +58,56 @@ class ApiService {
       return jsonDecode(response.body)['data'];
     } else {
       throw Exception('Gagal ambil data artikel');
+    }
+  }
+
+  // --- 📢 FUNGSI BARU: POST ARTIKEL KHUSUS ANTI-419 (MULTIPART UNTUK GAMBAR) ---
+  static Future<bool> storeArtikel({
+    required String judul,
+    required String ringkasan,
+    required String isi,
+    required String? imagePath, // Bisa bernilai null jika penjual gak upload foto bray
+  }) async {
+    try {
+      // 1. Ambil token Sanctum yang tersimpan di memori HP
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String token = prefs.getString('token') ?? '';
+
+      // 2. Gunakan MultipartRequest karena kita akan mengirim file gambar bray
+      // Menembak ke rute khusus kita: /post-artikel-khusus-api
+      var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/artikel'));
+
+      // 3. Pasang Header Keamanan Token bray!
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json', // 👈 KUNCI EMAS: Menghancurkan error 419 CSRF!
+      });
+
+      // 4. Masukkan text fields sesuai validasi ContentApiController kelompokmu
+      request.fields['judul'] = judul;
+      request.fields['ringkasan'] = ringkasan;
+      request.fields['isi'] = isi;
+
+      // 5. Masukkan file gambar jika ada yang dipilih dari gallery HP bray
+      if (imagePath != null && imagePath.isNotEmpty) {
+        request.files.add(await http.MultipartFile.fromPath('gambar', imagePath));
+      }
+
+      // 6. Kirim ke server VPS bray bray
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 201) {
+        print("Sukses Artikel berhasil disimpan di database BettaVerse via API.");
+        return true;
+      } else {
+        print("Gagal menyimpan artikel. Status Code: ${response.statusCode}");
+        print("Log Server: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Terjadi kesalahan koneksi saat storeArtikel: $e");
+      return false;
     }
   }
 }

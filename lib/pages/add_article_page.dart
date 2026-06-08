@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'package:cupang_store_kelompok9/constants/colors.dart';
 import 'package:cupang_store_kelompok9/constants/text_styles.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cupang_store_kelompok9/services/api_service.dart'; 
 
 class AddArticlePage extends StatefulWidget {
   const AddArticlePage({super.key});
@@ -13,9 +12,6 @@ class AddArticlePage extends StatefulWidget {
 }
 
 class _AddArticlePageState extends State<AddArticlePage> {
-  // Base URL backend BettaVerse kamu
-  final String baseUrl = "https://bettaverse.my.id";
-  
   // Controller untuk menangkap input teks form
   final TextEditingController _judulController = TextEditingController();
   final TextEditingController _ringkasanController = TextEditingController();
@@ -34,15 +30,15 @@ class _AddArticlePageState extends State<AddArticlePage> {
     }
   }
 
-  // Fungsi mengirim data ke API Laravel menggunakan Multipart Request
+  // 🔥 FUNGSI UPLOAD YANG SUDAH DI-FIX TOTAL MENGGUNAKAN API_SERVICE JALUR KHUSUS ANTI-419
   Future<void> _uploadArticle() async {
-    // Validasi input form sederhana bray
+    // Validasi input form bray
     if (_judulController.text.isEmpty || 
         _ringkasanController.text.isEmpty || 
         _isiController.text.isEmpty || 
         _selectedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Semua form dan gambar wajib diisi bray!')),
+        const SnackBar(content: Text('Semua form dan gambar wajib diisi!'), backgroundColor: Colors.orange),
       );
       return;
     }
@@ -52,47 +48,28 @@ class _AddArticlePageState extends State<AddArticlePage> {
     });
 
     try {
-      // 1. Ambil Token dari SharedPreferences bray
-      final prefs = await SharedPreferences.getInstance();
-      final String token = prefs.getString('token') ?? prefs.getString('auth_token') ?? '';
-
-      // 2. Gunakan MultipartRequest karena kita akan mengunggah file foto/gambar
-      var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/artikel'));
-      
-      // 3. Masukkan Bearer Token ke Header agar lolos proteksi Sanctum & bebas error 419 bray!
-      request.headers.addAll({
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      });
-
-      // 4. Menambahkan field teks ke dalam request body (Sesuai database: judul, ringkasan, isi)
-      request.fields['judul'] = _judulController.text;
-      request.fields['ringkasan'] = _ringkasanController.text;
-      request.fields['isi'] = _isiController.text;
-
-      // 5. Menyisipkan file gambar cover artikel
-      request.files.add(await http.MultipartFile.fromPath(
-        'gambar', // Key ini sudah sesuai dengan $request->file('gambar') di Laravel
-        _selectedImage!.path,
-      ));
-
-      var streamedResponse = await request.send();
-      var response = await http.Response.fromStream(streamedResponse);
+      // 🚀 Panggil fungsi sakti dari ApiService yang sudah mengunci jalur aman bebas CSRF
+      bool success = await ApiService.storeArtikel(
+        judul: _judulController.text,
+        ringkasan: _ringkasanController.text,
+        isi: _isiController.text,
+        imagePath: _selectedImage?.path,
+      );
 
       if (!mounted) return; // Pelindung async gap bray
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Artikel berhasil dipublikasikan!')),
+          const SnackBar(content: Text('Artikel BettaVerse berhasil dipublikasikan!'), backgroundColor: Colors.green),
         );
-        Navigator.pop(context, true); // Kirim value true agar halaman list ter-refresh otomatis
+        Navigator.pop(context, true); // Kembali dan beri sinyal true agar list langsung ter-refresh otomatis!
       } else {
-        throw Exception('Gagal menyimpan ke server. Kode: ${response.statusCode}');
+        throw Exception('Server menolak menyimpan. Periksa log terminal VPS atau Docker!');
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Terjadi kesalahan: $e')),
+        SnackBar(content: Text('Terjadi kesalahan: $e'), backgroundColor: Colors.red),
       );
     } finally {
       if (mounted) {
