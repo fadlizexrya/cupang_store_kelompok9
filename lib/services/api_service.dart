@@ -110,4 +110,50 @@ class ApiService {
       return false;
     }
   }
+  static Future<bool> updateArtikel({
+    required int id,
+    required String judul,
+    required String ringkasan,
+    required String isi,
+    String? imagePath, // Bisa bernilai null jika user tidak mengubah gambar
+  }) async {
+    final String baseUrl = "https://bettaverse.my.id";
+    final prefs = await SharedPreferences.getInstance();
+    final String token = prefs.getString('token') ?? prefs.getString('auth_token') ?? '';
+
+    try {
+      // Karena endpoint backend kita menggunakan POST (/api/artikel/{id}/update)
+      var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/artikel/$id/update'));
+      
+      // Pasang header keamanan Bearer Token Sanctum
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      });
+
+      // Tambahkan field data teks biasa
+      request.fields['judul'] = judul;
+      request.fields['ringkasan'] = ringkasan;
+      request.fields['isi'] = isi;
+
+      // Jika user memilih file gambar baru dari galeri HP, ikut sertakan dalam upload
+      if (imagePath != null && imagePath.isNotEmpty) {
+        request.files.add(await http.MultipartFile.fromPath('gambar', imagePath));
+      }
+
+      // Kirim data multipart request ke server
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true; // Berhasil diubah bray!
+      } else {
+        print("Server error saat update artikel: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Koneksi error saat update artikel: $e");
+      return false;
+    }
+  }
 }

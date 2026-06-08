@@ -5,21 +5,38 @@ import 'package:cupang_store_kelompok9/constants/colors.dart';
 import 'package:cupang_store_kelompok9/constants/text_styles.dart';
 import 'package:cupang_store_kelompok9/services/api_service.dart'; 
 
-class AddArticlePage extends StatefulWidget {
-  const AddArticlePage({super.key});
+class EditArticlePage extends StatefulWidget {
+  final Map<String, dynamic> artikel; // Menerima data artikel yang akan diedit
+
+  const EditArticlePage({super.key, required this.artikel});
+
   @override
-  State<AddArticlePage> createState() => _AddArticlePageState();
+  State<EditArticlePage> createState() => _EditArticlePageState();
 }
 
-class _AddArticlePageState extends State<AddArticlePage> {
-  // Controller untuk menangkap input teks form
+class _EditArticlePageState extends State<EditArticlePage> {
+  // Controller diisi otomatis menggunakan data yang di-passing dari halaman list
   final TextEditingController _judulController = TextEditingController();
   final TextEditingController _ringkasanController = TextEditingController();
   final TextEditingController _isiController = TextEditingController();
+  
   File? _selectedImage;
+  String? _existingImageUrl; // Untuk menampung URL gambar lama dari backend
   bool _isLoading = false;
+  int? _artikelId;
 
-  // Fungsi untuk memilih gambar dari galeri HP
+  @override
+  void initState() {
+    super.initState();
+    // Memasukkan data awal artikel ke dalam form input
+    _artikelId = int.tryParse(widget.artikel['id'].toString());
+    _judulController.text = widget.artikel['judul'] ?? '';
+    _ringkasanController.text = widget.artikel['ringkasan'] ?? '';
+    _isiController.text = widget.artikel['isi'] ?? '';
+    _existingImageUrl = widget.artikel['gambar_url'];
+  }
+
+  // Fungsi untuk memilih gambar baru dari galeri HP
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
@@ -30,41 +47,69 @@ class _AddArticlePageState extends State<AddArticlePage> {
     }
   }
 
-  // 🔥 FUNGSI UPLOAD YANG SUDAH DI-FIX TOTAL MENGGUNAKAN API_SERVICE JALUR KHUSUS ANTI-419
-  Future<void> _uploadArticle() async {
-    // Validasi input form bray
+  // Dialog validasi sebelum mengirim data ke server
+  void _konfirmasiSimpan() {
     if (_judulController.text.isEmpty || 
         _ringkasanController.text.isEmpty || 
-        _isiController.text.isEmpty || 
-        _selectedImage == null) {
+        _isiController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Semua form dan gambar wajib diisi!'), backgroundColor: Colors.orange),
+        const SnackBar(content: Text('Semua form wajib diisi!'), backgroundColor: Colors.orange),
       );
       return;
     }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Perubahan'),
+          content: const Text('Apakah anda yakin ingin mengubah?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context), // Tutup dialog jika Tidak
+              child: const Text('Tidak', style: TextStyle(color: Colors.grey)),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Tutup dialog konfirmasi
+                _updateArticle(); // Jalankan fungsi update data
+              },
+              child: const Text('Ya', style: TextStyle(color: AppColors.userActive, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Fungsi kirim data perubahan ke Backend Laravel via ApiService
+  Future<void> _updateArticle() async {
+    if (_artikelId == null) return;
 
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // 🚀 Panggil fungsi sakti dari ApiService yang sudah mengunci jalur aman bebas CSRF
-      bool success = await ApiService.storeArtikel(
+      // Panggil fungsi penanganan update di ApiService kelompokmu
+      // Pastikan method di ApiService menangani method spoofing PUT/PATCH jika multiparts form data
+      bool success = await ApiService.updateArtikel(
+        id: _artikelId!,
         judul: _judulController.text,
         ringkasan: _ringkasanController.text,
         isi: _isiController.text,
-        imagePath: _selectedImage?.path,
+        imagePath: _selectedImage?.path, // Bernilai null jika user tidak mengganti gambar
       );
 
-      if (!mounted) return; // Pelindung async gap
+      if (!mounted) return;
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Artikel BettaVerse berhasil dipublikasikan!'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Artikel berhasil diperbarui!'), backgroundColor: Colors.green),
         );
-        Navigator.pop(context, true); // Kembali dan beri sinyal true agar list langsung ter-refresh otomatis!
+        Navigator.pop(context, true); // Kembali ke halaman utama dengan sinyal true agar reload otomatis
       } else {
-        throw Exception('Server menolak menyimpan. Periksa log terminal VPS atau Docker!');
+        throw Exception('Server gagal menyimpan perubahan artikel.');
       }
     } catch (e) {
       if (!mounted) return;
@@ -100,7 +145,7 @@ class _AddArticlePageState extends State<AddArticlePage> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Tulis Artikel Baru',
+          'Edit Artikel',
           style: AppTextStyles.h1.copyWith(color: Colors.black, fontSize: 20),
         ),
         centerTitle: true,
@@ -110,7 +155,7 @@ class _AddArticlePageState extends State<AddArticlePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Upload Foto Artikel
+            // Upload / Preview Foto Artikel
             const Text('Cover Artikel (Gambar) *', style: AppTextStyles.label),
             const SizedBox(height: 8),
             GestureDetector(
@@ -124,9 +169,11 @@ class _AddArticlePageState extends State<AddArticlePage> {
                   border: Border.all(color: AppColors.sellerActive),
                   image: _selectedImage != null
                       ? DecorationImage(image: FileImage(_selectedImage!), fit: BoxFit.cover)
-                      : null,
+                      : (_existingImageUrl != null && _existingImageUrl!.isNotEmpty)
+                          ? DecorationImage(image: NetworkImage(_existingImageUrl!), fit: BoxFit.cover)
+                          : null,
                 ),
-                child: _selectedImage == null
+                child: _selectedImage == null && (_existingImageUrl == null || _existingImageUrl!.isEmpty)
                     ? const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -188,11 +235,11 @@ class _AddArticlePageState extends State<AddArticlePage> {
             ),
             const SizedBox(height: 40),
             
-            // Tombol Publish
+            // Tombol Perbarui Perubahan
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _isLoading ? null : _uploadArticle,
+                onPressed: _isLoading ? null : _konfirmasiSimpan,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.sellerActive,
                   padding: const EdgeInsets.symmetric(vertical: 18),
@@ -200,7 +247,7 @@ class _AddArticlePageState extends State<AddArticlePage> {
                 ),
                 child: _isLoading
                     ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Text('Publikasikan Artikel', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                    : const Text('Simpan Perubahan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
             ),
           ],

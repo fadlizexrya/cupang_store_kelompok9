@@ -262,8 +262,17 @@ class _MyStorePageState extends State<MyStorePage> {
                   },
                 ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const AddProductPage()));
+        onPressed: () async {
+          // MODIFIKASI: Menambahkan penanganan async-await saat membuka halaman tambah produk bray
+          final isAdded = await Navigator.push(
+            context, 
+            MaterialPageRoute(builder: (context) => const AddProductPage())
+          );
+          
+          // Jika halaman tambah produk mengembalikan sinyal true (berhasil post), jalankan fungsi refresh data
+          if (isAdded == true) {
+            _loadSellerAndFetchProducts();
+          }
         },
         backgroundColor: AppColors.sellerActive,
         icon: const Icon(Icons.add, color: Colors.white),

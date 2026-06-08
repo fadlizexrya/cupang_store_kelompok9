@@ -5,6 +5,7 @@ import 'package:cupang_store_kelompok9/constants/colors.dart';
 import 'package:cupang_store_kelompok9/constants/text_styles.dart';
 import 'package:cupang_store_kelompok9/pages/add_article_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cupang_store_kelompok9/pages/edit_article_page.dart';
 
 class MyArticlePage extends StatefulWidget {
   const MyArticlePage({super.key});
@@ -16,6 +17,22 @@ class MyArticlePage extends StatefulWidget {
 class _MyArticlePageState extends State<MyArticlePage> {
   // Base URL backend BettaVerse kamu
   final String baseUrl = "https://bettaverse.my.id";
+  
+  // Future variabel untuk mencegah trigger berulang-ulang di FutureBuilder saat setState
+  late Future<List<dynamic>> _myArticlesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshArticles();
+  }
+
+  // Fungsi helper untuk memicu refresh data bray
+  void _refreshArticles() {
+    setState(() {
+      _myArticlesFuture = fetchMyArticles();
+    });
+  }
 
   // Mengambil ID penjual asli yang saat ini sedang login dari local session HP
   Future<int> getLoggedInUserId() async {
@@ -25,14 +42,13 @@ class _MyArticlePageState extends State<MyArticlePage> {
     final String token = prefs.getString('token') ?? prefs.getString('auth_token') ?? '';
 
     if (token.isEmpty) {
-      // Jika belum login atau token kosong, default ke 1 agar halaman tidak crash
       return 1; 
     }
 
     try {
-      // Minta konfirmasi ID user asli langsung ke server Laravel kamu
+      // PERBAIKAN ENDPOINT: Menyesuaikan route default auth Sanctum Laravel (/api/user-profile)
       final response = await http.get(
-        Uri.parse('$baseUrl/api/user'),
+        Uri.parse('$baseUrl/api/user-profile'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -40,9 +56,11 @@ class _MyArticlePageState extends State<MyArticlePage> {
       );
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> userData = json.decode(response.body);
+        final Map<String, dynamic> responseData = json.decode(response.body);
         
-        // Ambil ID asli yang valid dari server
+        // Antisipasi jika response dibungkus key 'data' oleh AuthApiController bray
+        final Map<String, dynamic> userData = responseData['data'] ?? responseData;
+        
         final int realId = int.tryParse(userData['id'].toString()) ?? 1;
         return realId;
       }
@@ -50,7 +68,6 @@ class _MyArticlePageState extends State<MyArticlePage> {
       print("Gagal mengambil session user di MyArticlePage: $e");
     }
 
-    // Jalur aman jika koneksi bermasalah
     return 1;
   }
 
@@ -84,6 +101,75 @@ class _MyArticlePageState extends State<MyArticlePage> {
     }
   }
 
+  // FUNGSI UTAMA MENGHAPUS ARTIKEL KE BACKEND LARAVEL
+  Future<void> deleteArtikel(int artikelId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String token = prefs.getString('token') ?? prefs.getString('auth_token') ?? '';
+
+    try {
+      // Kirim request DELETE ke endpoint backend bray
+      final response = await http.delete(
+        Uri.parse('$baseUrl/api/artikel/$artikelId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Artikel berhasil dihapus!'),
+            backgroundColor: Colors.green, // MODIFIKASI: Hijau jika berhasil bray
+          ),
+        );
+        // Langsung refresh data setelah sukses bray!
+        _refreshArticles();
+      } else {
+        final Map<String, dynamic> res = json.decode(response.body);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res['message'] ?? 'Gagal menghapus artikel'),
+            backgroundColor: Colors.red, // MODIFIKASI: Merah jika gagal dari server
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Terjadi kesalahan koneksi: $e'),
+          backgroundColor: Colors.red, // MODIFIKASI: Merah jika gagal koneksi bray
+        ),
+      );
+    }
+  }
+
+  // DIALOG KONFIRMASI SEBELUM HAPUS
+  void konfirmasiHapus(int artikelId) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Hapus'),
+          content: const Text('Apakah anda ingin menghapus artikel ini?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context), // Tutup dialog jika klik Tidak
+              child: const Text('Tidak', style: TextStyle(color: Colors.grey)),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Tutup dialog dulu bray
+                deleteArtikel(artikelId); // Jalankan fungsi hapus
+              },
+              child: const Text('Ya', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -102,7 +188,7 @@ class _MyArticlePageState extends State<MyArticlePage> {
         centerTitle: true,
       ),
       body: FutureBuilder<List<dynamic>>(
-        future: fetchMyArticles(),
+        future: _myArticlesFuture, // Menggunakan instance future ter-cache agar stabil saat di-refresh
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -166,24 +252,42 @@ class _MyArticlePageState extends State<MyArticlePage> {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Suka: ${artikel['likes_count'] ?? 0} • Tidak Suka: ${artikel['dislikes_count'] ?? 0}',
-                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                          ),
+                          // Bagian info Suka & Tidak Suka di bawah judul sudah dihapus total bray
                         ],
                       ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.edit_outlined, color: AppColors.userActive),
                       onPressed: () {
-                        // TODO: Implementasi navigasi ke halaman edit artikel jika diperlukan
+                        // Navigasi ke halaman Edit membawa map data artikel terpilih
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => EditArticlePage(artikel: artikel),
+                          ),
+                        ).then((value) {
+                          if (value == true) {
+                            // Jika kembali membawa sinyal sukses (true), segarkan halaman otomatis
+                            _refreshArticles();
+                          }
+                        });
                       },
                     ),
                     IconButton(
                       icon: const Icon(Icons.delete_outline, color: Colors.red),
                       onPressed: () {
-                        // TODO: Implementasi fungsi hapus artikel
+                        // Ambil ID artikel asli dari database bray
+                        final int idHapus = int.tryParse(artikel['id'].toString()) ?? 0;
+                        if (idHapus != 0) {
+                          konfirmasiHapus(idHapus);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('ID artikel tidak valid'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
                       },
                     ),
                   ],
@@ -199,8 +303,8 @@ class _MyArticlePageState extends State<MyArticlePage> {
             context,
             MaterialPageRoute(builder: (context) => const AddArticlePage()),
           ).then((value) {
-            // Refresh halaman otomatis setelah kembali dari menulis artikel baru
-            setState(() {});
+            // Memanggil fungsi refresh data total setelah kembali dari AddArticlePage bray
+            _refreshArticles();
           });
         },
         backgroundColor: AppColors.sellerActive,

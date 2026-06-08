@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:cupang_store_kelompok9/constants/colors.dart';
 import 'package:cupang_store_kelompok9/constants/text_styles.dart';
 
@@ -18,104 +17,27 @@ class ArticleDetailPage extends StatefulWidget {
 }
 
 class _ArticleDetailPageState extends State<ArticleDetailPage> {
-  // State interaksi dinamis untuk fitur Like & Dislike
-  bool _isLiked = false;
-  bool _isDisliked = false;
-  int _likeCount = 46; 
-  int _dislikeCount = 5; 
-
   String _waktuSelesaiBaca = '';
 
   @override
   void initState() {
     super.initState();
     _inisialisasiWaktuSelesaiAkses();
-    _inisialisasiDataInteraksi();
   }
 
   // Fungsi mencatat waktu real-time kapan pengguna membaca halaman detail ini hingga selesai
   void _inisialisasiWaktuSelesaiAkses() {
     final DateTime sekarang = DateTime.now();
     final String jam = sekarang.hour.toString().padLeft(2, '0');
-    final String menit = sekarang.minute.toString().padLeft(2, '0');
+    final String menit = ClinicalDataFormatter_convertMinutes(sekarang.minute);
     setState(() {
       _waktuSelesaiBaca = '$jam:$menit WIB';
     });
   }
 
-  // Sinkronisasi data counter dari database backend Laravel secara nyata
-  void _inisialisasiDataInteraksi() {
-    setState(() {
-      _likeCount = int.tryParse(widget.article['likes_count'].toString()) ?? 46;
-      _dislikeCount = int.tryParse(widget.article['dislikes_count'].toString()) ?? 5;
-      
-      // Status kondisi klik user awal dari API Laravel (jika terikat session/user auth)
-      _isLiked = widget.article['is_liked'] ?? false;
-      _isDisliked = widget.article['is_disliked'] ?? false;
-    });
-  }
-
-  // ==================== FUNGSIONALITAS API KIRIM KE BACKEND ====================
-  Future<void> _updateInteraksiKeBackend(String type) async {
-    final int articleId = widget.article['id'] ?? 0;
-    if (articleId == 0) return;
-
-    try {
-      final response = await http.post(
-        Uri.parse('https://bettaverse.my.id/api/artikel/$articleId/$type'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        debugPrint('Berhasil sinkronisasi: ${response.body}');
-      } else {
-        debugPrint('Gagal sinkronisasi: ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('Terjadi gangguan jaringan: $e');
-    }
-  }
-  // ==============================================================================
-
-  // Aksi tombol Like & Unlike fungsional + Sinkronisasi API
-  void _handleLikeAction() {
-    setState(() {
-      if (_isLiked) {
-        _isLiked = false;
-        _likeCount--;
-      } else {
-        _isLiked = true;
-        _likeCount++;
-        if (_isDisliked) {
-          _isDisliked = false;
-          _dislikeCount--;
-        }
-      }
-    });
-    // Kirim trigger perubahan secara asinkron ke server
-    _updateInteraksiKeBackend('like');
-  }
-
-  // Aksi tombol Dislike & Undislike fungsional + Sinkronisasi API
-  void _handleDislikeAction() {
-    setState(() {
-      if (_isDisliked) {
-        _isDisliked = false;
-        _dislikeCount--;
-      } else {
-        _isDisliked = true;
-        _dislikeCount++;
-        if (_isLiked) {
-          _isLiked = false;
-          _likeCount--;
-        }
-      }
-    });
-    // Kirim trigger perubahan secara asinkron ke server
-    _updateInteraksiKeBackend('dislike');
+  // Helper internal untuk padding angka menit waktu
+  String ClinicalDataFormatter_convertMinutes(int minute) {
+    return minute.toString().padLeft(2, '0');
   }
 
   @override
@@ -139,8 +61,8 @@ class _ArticleDetailPageState extends State<ArticleDetailPage> {
     }
     // =================================================================================
 
-    // DATA DINAMIS NAMA PEMBUAT
-    String namaPembuat = 'Fadli'; 
+    // DATA DINAMIS NAMA PEMBUAT (Membaca nama akun penjual asli secara dinamis)
+    String namaPembuat = 'Penjual BettaVerse'; 
     if (widget.article['user'] != null && widget.article['user']['name'] != null) {
       namaPembuat = widget.article['user']['name'].toString();
     } else if (widget.article['penulis'] != null) {
@@ -212,25 +134,33 @@ class _ArticleDetailPageState extends State<ArticleDetailPage> {
                   ),
                   const SizedBox(height: 16),
                   
-                  // 3. Meta Data Dinamis Menampilkan Nama Pembuat, Tanggal Asli, dan Jam Real-time Selesai Akses
-                  Row(
-                    children: [
-                      const CircleAvatar(
-                        radius: 16,
-                        backgroundColor: AppColors.userInactive,
-                        child: Icon(Icons.person, size: 16, color: AppColors.userActive),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(namaPembuat, style: AppTextStyles.label.copyWith(fontSize: 14)), 
-                      const SizedBox(width: 16),
-                      const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(displayTanggal, style: const TextStyle(color: Colors.grey, fontSize: 12)), 
-                      const SizedBox(width: 16),
-                      const Icon(Icons.access_time, size: 14, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(_waktuSelesaiBaca, style: const TextStyle(color: Colors.grey, fontSize: 12)), 
-                    ],
+                  // 3. Meta Data Dinamis (Fix Overflow dengan SingleChildScrollView + Row)
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 16,
+                          backgroundColor: AppColors.userInactive,
+                          child: Icon(Icons.person, size: 16, color: AppColors.userActive),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          namaPembuat, 
+                          style: AppTextStyles.label.copyWith(fontSize: 14),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ), 
+                        const SizedBox(width: 16),
+                        const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(displayTanggal, style: const TextStyle(color: Colors.grey, fontSize: 12)), 
+                        const SizedBox(width: 16),
+                        const Icon(Icons.access_time, size: 14, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(_waktuSelesaiBaca, style: const TextStyle(color: Colors.grey, fontSize: 12)), 
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 24),
                   
@@ -283,78 +213,6 @@ class _ArticleDetailPageState extends State<ArticleDetailPage> {
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 32),
-                  const Divider(color: AppColors.borderForm),
-                  const SizedBox(height: 16),
-                  
-                  // 7. Feedback Section Fungsional Like & Dislike
-                  Row(
-                    children: [
-                      Expanded( 
-                        child: Text('Apakah artikel ini membantu?', style: AppTextStyles.label.copyWith(fontSize: 14)),
-                      ),
-                      const SizedBox(width: 8),
-                      // Tombol Like / Unlike Fungsional
-                      GestureDetector(
-                        onTap: _handleLikeAction,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: _isLiked ? AppColors.userInactive : Colors.grey[100],
-                            borderRadius: BorderRadius.circular(20),
-                            border: _isLiked ? Border.all(color: AppColors.userActive) : null,
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _isLiked ? Icons.thumb_up_alt : Icons.thumb_up_alt_outlined, 
-                                size: 16, 
-                                color: _isLiked ? AppColors.userActive : Colors.grey[700]
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '$_likeCount', 
-                                style: TextStyle(
-                                  color: _isLiked ? AppColors.userActive : Colors.grey[800], 
-                                  fontWeight: FontWeight.bold
-                                )
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Tombol Dislike / Undislike Fungsional
-                      GestureDetector(
-                        onTap: _handleDislikeAction,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: _isDisliked ? Colors.red[50] : Colors.grey[100],
-                            borderRadius: BorderRadius.circular(20),
-                            border: _isDisliked ? Border.all(color: Colors.red) : null,
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _isDisliked ? Icons.thumb_down_alt : Icons.thumb_down_alt_outlined, 
-                                size: 16, 
-                                color: _isDisliked ? Colors.red : Colors.grey[700]
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '$_dislikeCount', 
-                                style: TextStyle(
-                                  color: _isDisliked ? Colors.red : Colors.grey[800], 
-                                  fontWeight: FontWeight.bold
-                                )
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                   const SizedBox(height: 40),
                 ],

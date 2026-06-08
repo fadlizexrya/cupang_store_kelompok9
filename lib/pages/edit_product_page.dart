@@ -129,8 +129,8 @@ class _EditProductPageState extends State<EditProductPage> {
       });
 
       request.fields['_method'] = 'PUT';
-      request.fields['nama'] = _namaController.text;
-      request.fields['jenis'] = _selectedJenis; 
+      request.fields['nama_cupang'] = _namaController.text;
+      request.fields['jenis_cupang'] = _selectedJenis; 
       request.fields['harga'] = _hargaController.text;
       request.fields['stok'] = _stokController.text;
       request.fields['no_wa'] = _noWaController.text;
