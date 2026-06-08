@@ -6,6 +6,7 @@ import 'package:cupang_store_kelompok9/constants/colors.dart';
 import 'package:cupang_store_kelompok9/constants/text_styles.dart';
 import 'package:cupang_store_kelompok9/pages/add_product_page.dart';
 import 'package:cupang_store_kelompok9/models/produk_model.dart';
+import 'package:cupang_store_kelompok9/pages/edit_product_page.dart';
 
 class MyStorePage extends StatefulWidget {
   const MyStorePage({super.key});
@@ -60,6 +61,82 @@ class _MyStorePageState extends State<MyStorePage> {
     } catch (e) {
       _disableLoading();
     }
+  }
+
+  // FUNGSI UTAMA UNTUK MENGHAPUS POSTINGAN VIA API
+  Future<void> _deleteProduct(int id) async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String token = prefs.getString('token') ?? '';
+
+      // Menembak endpoint delete REST API Laravel BettaVerse kelompokmu bray
+      final response = await http.delete(
+        Uri.parse('https://bettaverse.my.id/api/marketplace/$id'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        // Jika sukses di server, hapus item dari list lokal dan segarkan UI bray
+        setState(() {
+          _myProducts.removeWhere((product) => product.id == id);
+          _isLoading = false;
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Postingan berhasil dihapus!'), backgroundColor: Colors.green),
+          );
+        }
+      } else {
+        _disableLoading();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal menghapus dari server: ${response.statusCode}'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      _disableLoading();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Terjadi kesalahan koneksi: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // FUNGSI KONFIRMASI VALIDASI DENGAN DIALOG ALERT
+  void _showDeleteConfirmationDialog(int productId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // User wajib berinteraksi dengan menekan tombol bray
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Hapus'),
+          content: const Text('Apakah anda yakin ingin menghapus?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context), // Klik Tidak -> Menutup dialog bray
+              child: const Text('Tidak', style: TextStyle(color: Colors.grey)),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Tutup dialog konfirmasi terlebih dahulu
+                _deleteProduct(productId); // Jalankan fungsi eksekusi hapus bray
+              },
+              child: const Text('Ya', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _disableLoading() {
@@ -157,14 +234,26 @@ class _MyStorePageState extends State<MyStorePage> {
                           ),
                           IconButton(
                             icon: const Icon(Icons.edit_outlined, color: AppColors.userActive), 
-                            onPressed: () {
-                              // Navigasi ke halaman edit atau logika edit mu di sini
+                            onPressed: () async {
+                              // Berpindah ke halaman edit dengan membawa data produk terpilih
+                              final isUpdated = await Navigator.push(
+                                context, 
+                                MaterialPageRoute(
+                                  builder: (context) => EditProductPage(product: product),
+                                ),
+                              );
+                              
+                              // Jika data berhasil disimpan, segarkan otomatis list produk di toko
+                              if (isUpdated == true) {
+                                _loadSellerAndFetchProducts();
+                              }
                             }
                           ),
                           IconButton(
                             icon: const Icon(Icons.delete_outline, color: Colors.red), 
                             onPressed: () {
-                              // Logika hapus data marketplace mu di sini
+                              // MENGAKSIKAN FILTER DIALOG KONFIRMASI DENGAN MELEMPARKAN ID PRODUK BRAY
+                              _showDeleteConfirmationDialog(product.id);
                             }
                           ),
                         ],
